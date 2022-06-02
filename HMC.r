@@ -31,14 +31,18 @@ HMC = function (U, grad_U, epsilon, L, current_q)
   current_K = sum(current_p^2) / 2
   proposed_U = U(q)
   proposed_K = sum(p^2) / 2
+  # print('--------------')
+  # print(current_U)
+  # print(current_K)
+  # print(proposed_U)
+  # print(proposed_K)
+  # print('q is:')
+  # print(q)
+  # print('-------------')
+  
   # Accept or reject the state at end of trajectory, returning either
   # the position at the end of the trajectory or the initial position
-  print(current_q)
-  print(current_U)
-  print(current_K)
-  print(proposed_U)
-  print(proposed_K)
-  print('----------')
+  print(exp(current_U-proposed_U+current_K-proposed_K))
   if (runif(1) < exp(current_U-proposed_U+current_K-proposed_K))
   {
     return (list(next_q=q, traj = traj))  # accept
