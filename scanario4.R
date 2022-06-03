@@ -1,4 +1,11 @@
+library(mvtnorm)
+library(ggplot2)
+library(gridExtra)
+source('algorithms.R')
+
+
 dataset <- read.csv('datset.csv')
+# fitting the model to see best parameters
 model <- glm(y ~ . - X1,family=binomial(link='logit'),data=dataset)
 
 likelihood_dataset <- function(betas) {
@@ -10,6 +17,25 @@ likelihood_dataset <- function(betas) {
   prod(p_of_xs^Y * (1 - p_of_xs)^(1-Y))
 }
 
+mh_chains_un <- vector(mode = "list", length = 5)
+mh_times <- rep(0, 5)
+names(mh_chains_un) <- c('chain_1', 'chain_2', 'chain_3', 'chain_4', 'chain_5')
+cov_dataset <- diag(11) * 0.1
+
+df <- vector()
+for (i in 1:5) {
+  mh_times[i] <- system.time(mh_chains_un[[paste('chain_', i, sep = '')]] <- metropolis_hastings(likelihood_dataset, rmvnorm,  rep(0, 11), 1000, cov_dataset))[3]
+  df <- rbind(df, cbind(as.data.frame(mh_chains_un[[paste('chain_', i, sep = '')]]), samples=1:1000,chain=rep(as.character(i), 1000)  )) 
+}
+df <- as.data.frame(df)
+
+
+p1 <- ggplot(df) + geom_line(aes(x=samples, y=V1, color=chain)) + theme(legend.position = "none")
+p2 <- ggplot(df) + geom_line(aes(x=samples, y=V2, color=chain)) + theme(legend.position = "none")
+
+
+# HMC 
+
 minus_log_likelihood_dataset <- function(betas) {
   X <- as.matrix(dataset[, 1:ncol(dataset)-1])
   Y <- dataset$y
@@ -17,14 +43,6 @@ minus_log_likelihood_dataset <- function(betas) {
   p_of_xs <-  exp(rowSums(B * X)) / (1 + exp(rowSums(B * X)))
   -1 * sum(Y * log(p_of_xs) + (1-Y) * log(1 - p_of_xs))
 }
-
-cov_dataset <- diag(11) * 0.1
-
-df <- metropolis_hastings(likelihood_dataset, rmvnorm,  rep(0, 11), 1000, cov_dataset)
-summary(df)
-
-
-# HMC 
 
 minus_log_like_grad <- function(betas) {
   X <- as.matrix(dataset[, 1:ncol(dataset)-1])
@@ -56,82 +74,37 @@ hmc_make_samples <- function(mlogU, grad_mlogU, epsilon, L, current_q, m) {
                                         Q9 = res$next_q[9],
                                         Q10 = res$next_q[10],
                                         Q11 = res$next_q[11]
-                                        ))
+    ))
     #print(summary(res$next_q))
     current_q = res$next_q
   }
   samples
 }
 
+
 L = 50
 epsilon = 0.01
 current_q = rep(0, 11)
 m = 1000
 
-samples <- hmc_make_samples(minus_log_likelihood_dataset, minus_log_like_grad, epsilon, L, current_q, 100)
-summary(samples)
-
-
-
-# REJECTION SAMPLING
-
-renvelope_dataset <- function(n) {
-  rnorm(11)
+hmc_chains_un <- vector(mode = "list", length = 5)
+names(hmc_chains_un) <- c('chain_1', 'chain_2', 'chain_3', 'chain_4', 'chain_5')
+hmc_times <- rep(0, 5)
+hmc_df <- vector()
+for (i in 1:5) {
+  hmc_times[i] <- system.time(hmc_chains_un[[paste('chain_', i, sep = '')]] <-   hmc_make_samples(minus_log_likelihood_dataset, minus_log_like_grad, epsilon, L, current_q, 1000))[3]
+  hmc_df <- rbind(hmc_df, cbind(as.data.frame(hmc_chains_un[[paste('chain_', i, sep = '')]]), samples=1:1000,chain=rep(as.character(i), 1000)  )) 
 }
-
-denvelope_dataset <- function(x, c) {
-  prod(dnorm(x[2])) * c
-}
-
-rj <- rejection_sampling(1000, likelihood_dataset, renvelope_dataset, denvelope_dataset, 1e-175)
-rj <- as.data.frame(rj)
-summary(rj)
-
-likelihood_dataset(c(2.00, -0.84, -0.64,  0.72, -0.10, -0.85, -0.97,  0.23, -0.68, -0.42,  0.47))
+hmc_df <- as.data.frame(hmc_df)
+names(hmc_df) <- names(df)
 
 
-scenario4_run_chains <- function() {
-  
-  mh_chains_un <- vector(mode = "list", length = 5)
-  mh_times <- rep(0, 5)
-  names(mh_chains_un) <- c('chain_1', 'chain_2', 'chain_3', 'chain_4', 'chain_5')
-  cov_dataset <- diag(11) * 0.1
-  
-  df <- vector()
-  for (i in 1:5) {
-    mh_times[i] <- system.time(mh_chains_un[[paste('chain_', i, sep = '')]] <- metropolis_hastings(likelihood_dataset, rmvnorm,  rep(0, 11), 1000, cov_dataset))[3]
-    df <- rbind(df, cbind(as.data.frame(mh_chains_un[[paste('chain_', i, sep = '')]]), samples=1:1000,chain=rep(as.character(i), 1000)  )) 
-  }
-  df <- as.data.frame(df)
-  
+p3 <- ggplot(hmc_df) + geom_line(aes(x=samples, y=V1, color=chain)) + theme(legend.position = "none")
+p4 <- ggplot(hmc_df) + geom_line(aes(x=samples, y=V2, color=chain)) + theme(legend.position = "none")
 
-  p1 <- ggplot(df) + geom_line(aes(x=samples, y=V1, color=chain)) + theme(legend.position = "none")
-  p2 <- ggplot(df) + geom_line(aes(x=samples, y=V2, color=chain)) + theme(legend.position = "none")
-  
-  L = 50
-  epsilon = 0.01
-  current_q = rep(0, 11)
-  m = 1000
-  
-  hmc_chains_un <- vector(mode = "list", length = 5)
-  names(hmc_chains_un) <- c('chain_1', 'chain_2', 'chain_3', 'chain_4', 'chain_5')
-  hmc_times <- rep(0, 5)
-  hmc_df <- vector()
-  for (i in 1:5) {
-    hmc_times[i] <- system.time(hmc_chains_un[[paste('chain_', i, sep = '')]] <-   hmc_make_samples(minus_log_likelihood_dataset, minus_log_like_grad, epsilon, L, current_q, 100))[3]
-    hmc_df <- rbind(hmc_df, cbind(as.data.frame(hmc_chains_un[[paste('chain_', i, sep = '')]]), samples=1:1000,chain=rep(as.character(i), 1000)  )) 
-  }
-  hmc_df <- as.data.frame(hmc_df)
-  names(hmc_df) <- names(df)
-  
-  
-  p3 <- ggplot(hmc_df) + geom_line(aes(x=samples, y=Q1, color=chain)) + theme(legend.position = "none")
-  p4 <- ggplot(hmc_df) + geom_line(aes(x=samples, y=Q2, color=chain)) + theme(legend.position = "none")
-  
-  
-  
-  grid.arrange(p1, p3, p2, p4, ncol=2, nrow=2)
-}
+
+
+
 
 acf(df$V1)
 acf(hmc_df$V2)
